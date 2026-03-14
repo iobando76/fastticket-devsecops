@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fastticket-default-deny
+  namespace: fastticket
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fastticket-allow-frontend-to-backend
+  namespace: fastticket
+spec:
+  podSelector:
+    matchLabels:
+      app: fastticket-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: fastticket-frontend
+      ports:
+        - protocol: TCP
+          port: 5000

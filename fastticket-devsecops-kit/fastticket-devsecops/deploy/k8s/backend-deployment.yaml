@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastticket-backend
+  namespace: fastticket
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fastticket-backend
+  template:
+    metadata:
+      labels:
+        app: fastticket-backend
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: ghcr.io/example/fastticket-backend:prod
+          ports:
+            - containerPort: 5000
+          env:
+            - name: PORT
+              value: '5000'
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: fastticket-secrets
+                  key: mongodb-uri
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: fastticket-secrets
+                  key: jwt-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
