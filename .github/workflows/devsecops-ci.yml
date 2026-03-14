@@ -62,7 +62,7 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-  build_sca:
+   build_sca:
     name: "2. BUILD & SCA"
     runs-on: ubuntu-latest
     needs: code
@@ -73,6 +73,11 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
+        with:
+          version: v0.56.1
 
       - name: Build backend image
         run: docker build -t fastticket-backend:${{ github.sha }} -f backend/Dockerfile .
@@ -91,6 +96,7 @@ jobs:
           exit-code: "0"
           format: table
           vuln-type: os,library
+          skip-setup-trivy: true
 
       - name: Trivy backend image scan
         continue-on-error: true
@@ -152,6 +158,15 @@ jobs:
       - name: Launch staging stack with Docker Compose
         run: docker compose -f docker-compose.ci.yml up -d --build
 
+      - name: Show container status
+        if: always()
+        run: docker compose -f docker-compose.ci.yml ps
+
+      - name: Show container logs
+        if: always()
+        run: docker compose -f docker-compose.ci.yml logs --no-color
+
+
       - name: Wait for API
         run: bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
 
@@ -163,6 +178,8 @@ jobs:
 
       - name: Frontend smoke test
         run: curl --fail http://localhost:4173/
+
+
 
   test_dast:
     name: "5. TEST & DAST"
