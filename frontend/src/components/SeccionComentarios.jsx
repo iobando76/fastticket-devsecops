@@ -1,21 +1,16 @@
-// frontend/src/components/SeccionComentarios.jsx
+import { useEffect, useState } from "react";
 import axios from "axios";
 
-const SeccionComentarios = ({ eventoId }) => {
+export default function SeccionComentarios({ eventoId }) {
   const [comentarios, setComentarios] = useState([]);
   const [nuevoComentario, setNuevoComentario] = useState("");
   const [calificacion, setCalificacion] = useState(5);
   const [loading, setLoading] = useState(false);
   const [usuarioAutenticado, setUsuarioAutenticado] = useState(false);
 
-  useEffect(() => {
-    cargarComentarios();
-    verificarAutenticacion();
-  }, [eventoId]);
-
   const verificarAutenticacion = () => {
     const token = localStorage.getItem("token");
-    setUsuarioAutenticado(!!token);
+    setUsuarioAutenticado(Boolean(token));
   };
 
   const cargarComentarios = async () => {
@@ -29,6 +24,11 @@ const SeccionComentarios = ({ eventoId }) => {
     }
   };
 
+  useEffect(() => {
+    cargarComentarios();
+    verificarAutenticacion();
+  }, [eventoId]);
+
   const enviarComentario = async (e) => {
     e.preventDefault();
 
@@ -38,9 +38,11 @@ const SeccionComentarios = ({ eventoId }) => {
     }
 
     setLoading(true);
+
     try {
       const token = localStorage.getItem("token");
-      const _response = await axios.post(
+
+      await axios.post(
         "http://localhost:5000/api/comentarios",
         {
           evento: eventoId,
@@ -52,7 +54,6 @@ const SeccionComentarios = ({ eventoId }) => {
         }
       );
 
-      // Recargar comentarios después de crear uno nuevo
       await cargarComentarios();
       setNuevoComentario("");
       setCalificacion(5);
@@ -73,6 +74,7 @@ const SeccionComentarios = ({ eventoId }) => {
 
     try {
       const token = localStorage.getItem("token");
+
       await axios.post(
         `http://localhost:3000/api/comentarios/${comentarioId}/like`,
         {},
@@ -81,7 +83,7 @@ const SeccionComentarios = ({ eventoId }) => {
         }
       );
 
-      cargarComentarios();
+      await cargarComentarios();
     } catch (error) {
       console.error("Error al dar like:", error);
     }
@@ -94,6 +96,7 @@ const SeccionComentarios = ({ eventoId }) => {
 
     try {
       const token = localStorage.getItem("token");
+
       await axios.delete(
         `http://localhost:3000/api/comentarios/${comentarioId}`,
         {
@@ -101,42 +104,44 @@ const SeccionComentarios = ({ eventoId }) => {
         }
       );
 
-      setComentarios(comentarios.filter((c) => c._id !== comentarioId));
+      setComentarios((prev) => prev.filter((c) => c._id !== comentarioId));
       alert("Comentario eliminado");
     } catch {
       alert("Error al eliminar comentario");
     }
   };
 
-  const renderEstrellas = (cantidad, esInput = false, onChange = null) => {
-    return (
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((estrella) => (
-          <button
-            key={estrella}
-            type="button"
-            onClick={() => esInput && onChange && onChange(estrella)}
-            disabled={!esInput}
-            className={`${
-              esInput ? "cursor-pointer hover:scale-110" : "cursor-default"
-            } transition`}
+  const renderEstrellas = (cantidad, esInput = false, onChange = null) => (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((estrella) => (
+        <button
+          key={estrella}
+          type="button"
+          onClick={() => {
+            if (esInput && onChange) onChange(estrella);
+          }}
+          disabled={!esInput}
+          className={
+            esInput
+              ? "cursor-pointer hover:scale-110 transition"
+              : "cursor-default transition"
+          }
+        >
+          <svg
+            className={
+              estrella <= cantidad
+                ? "w-5 h-5 text-yellow-400 fill-current"
+                : "w-5 h-5 text-gray-300"
+            }
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
           >
-            <svg
-              className={`w-5 h-5 ${
-                estrella <= cantidad
-                  ? "text-yellow-400 fill-current"
-                  : "text-gray-300"
-              }`}
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-            >
-              <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
-            </svg>
-          </button>
-        ))}
-      </div>
-    );
-  };
+            <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 mt-8">
@@ -144,7 +149,6 @@ const SeccionComentarios = ({ eventoId }) => {
         Comentarios ({comentarios.length})
       </h2>
 
-      {/* Formulario de nuevo comentario */}
       {usuarioAutenticado ? (
         <form
           onSubmit={enviarComentario}
@@ -154,7 +158,6 @@ const SeccionComentarios = ({ eventoId }) => {
             Deja tu comentario
           </h3>
 
-          {/* Calificación */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Calificación
@@ -162,7 +165,6 @@ const SeccionComentarios = ({ eventoId }) => {
             {renderEstrellas(calificacion, true, setCalificacion)}
           </div>
 
-          {/* Texto del comentario */}
           <div className="mb-4">
             <textarea
               value={nuevoComentario}
@@ -199,7 +201,6 @@ const SeccionComentarios = ({ eventoId }) => {
         </div>
       )}
 
-      {/* Lista de comentarios */}
       <div className="space-y-4">
         {comentarios.length > 0 ? (
           comentarios.map((comentario) => (
@@ -207,16 +208,17 @@ const SeccionComentarios = ({ eventoId }) => {
               key={comentario._id}
               className="border border-gray-200 rounded-lg p-5 hover:shadow-md transition"
             >
-              {/* Header del comentario */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">
                     {comentario.usuario?.nombre?.charAt(0).toUpperCase() || "U"}
                   </div>
+
                   <div>
                     <h4 className="font-semibold text-gray-900">
                       {comentario.usuario?.nombre || "Usuario"}
                     </h4>
+
                     <div className="flex items-center gap-2 mt-1">
                       {renderEstrellas(comentario.calificacion)}
                       <span className="text-sm text-gray-500">
@@ -228,9 +230,9 @@ const SeccionComentarios = ({ eventoId }) => {
                   </div>
                 </div>
 
-                {/* Botón eliminar (solo para el autor) */}
                 {usuarioAutenticado && (
                   <button
+                    type="button"
                     onClick={() => eliminarComentario(comentario._id)}
                     className="text-red-500 hover:text-red-700 text-sm"
                   >
@@ -239,19 +241,18 @@ const SeccionComentarios = ({ eventoId }) => {
                 )}
               </div>
 
-              {/* Contenido del comentario */}
               <p className="text-gray-700 mb-3">{comentario.contenido}</p>
 
-              {/* Footer del comentario */}
               <div className="flex items-center gap-4 text-sm">
                 <button
+                  type="button"
                   onClick={() => darLike(comentario._id)}
                   disabled={!usuarioAutenticado}
-                  className={`flex items-center gap-1 ${
+                  className={
                     usuarioAutenticado
-                      ? "text-gray-600 hover:text-blue-600"
-                      : "text-gray-400 cursor-not-allowed"
-                  } transition`}
+                      ? "flex items-center gap-1 text-gray-600 hover:text-blue-600 transition"
+                      : "flex items-center gap-1 text-gray-400 cursor-not-allowed transition"
+                  }
                 >
                   <svg
                     className="w-5 h-5"
@@ -295,6 +296,4 @@ const SeccionComentarios = ({ eventoId }) => {
       </div>
     </div>
   );
-};
-
-export default SeccionComentarios;
+}
