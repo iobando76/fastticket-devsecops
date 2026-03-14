@@ -1,5 +1,4 @@
 // frontend/src/components/SeccionComentarios.jsx
-import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 const SeccionComentarios = ({ eventoId }) => {
