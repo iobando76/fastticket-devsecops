@@ -219,38 +219,11 @@ jobs:
           format: table
 
       - name: Check deployment security controls
-    runs-on: ubuntu-latest
-    needs: hardening
-      url: https://github.com/${{ github.repository }}/actions
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build immutable release bundle
-        run: |
-          mkdir -p release
-            backend/Dockerfile \
-            frontend/Dockerfile \
-            deploy/k8s \
-            scripts/ci \
-            docs
-
-      - name: Upload release bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: fastticket-prod-bundle
-          path: release/
-          tar -czf release/fastticket-${{ github.sha }}.tgz \
-            .github/workflows/devsecops-ci.yml \
-            docker-compose.ci.yml \
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    environment:
-      name: production
+        run: bash scripts/ci/check-k8s-hardening.sh
 
   deploy_prod:
     name: "7. DEPLOY to PROD (simulado)"
- runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     needs: hardening
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     environment:
@@ -278,4 +251,3 @@ jobs:
         with:
           name: fastticket-prod-bundle
           path: release/
-
