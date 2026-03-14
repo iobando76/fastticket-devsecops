@@ -27,26 +27,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-       - uses: actions/setup-node@v4
-  with:
-    node-version: 20
-    cache: npm
-    cache-dependency-path: |
-      backend/package-lock.json
-      frontend/package-lock.json
+        uses: actions/checkout@v4
 
-<<<<<<< HEAD
-=======
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        - uses: actions/setup-node@v4
-  with:
-    node-version: 22
-    cache: npm
-    cache-dependency-path: |
-      backend/package-lock.json
-      frontend/package-lock.json
->>>>>>> 0798f25 (fix ci cache dependency paths)
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install backend dependencies
         working-directory: backend
@@ -114,8 +104,6 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: fastticket-frontend:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
           exit-code: '1'
           format: table
 
@@ -138,7 +126,7 @@ jobs:
             p/owasp-top-ten
             p/dockerfile
             p/kubernetes
-        
+
   deploy_staging:
     name: '4. DEPLOY to STAGING'
     runs-on: ubuntu-latest
@@ -186,9 +174,6 @@ jobs:
         run: docker compose -f docker-compose.ci.yml up -d --build
 
       - name: Wait for services
-        run: |
-          bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
-          bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
 
       - name: Functional smoke tests
         run: bash scripts/ci/smoke-tests.sh
@@ -251,3 +236,7 @@ jobs:
         with:
           name: fastticket-prod-bundle
           path: release/
+        run: |
+          bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
+          bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
+
