@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: "22"
   BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/fastticket-backend
   FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/fastticket-frontend
   CI_BACKEND_URL: http://localhost:5000
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   code:
-    name: '1. CODE (Shift-Left)'
+    name: "1. CODE (Shift-Left)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -63,7 +63,7 @@ jobs:
         run: npm run build
 
   build_sca:
-    name: '2. BUILD & SCA'
+    name: "2. BUILD & SCA"
     runs-on: ubuntu-latest
     needs: code
     timeout-minutes: 20
@@ -88,8 +88,9 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
           format: table
+          vuln-type: os,library
 
       - name: Trivy backend image scan
         continue-on-error: true
@@ -98,20 +99,23 @@ jobs:
           image-ref: fastticket-backend:${{ github.sha }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
           format: table
           skip-setup-trivy: true
+
+      - name: Trivy frontend image scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: fastticket-frontend:${{ github.sha }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
           format: table
           skip-setup-trivy: true
 
   sast:
-    name: '3. SAST'
+    name: "3. SAST"
     runs-on: ubuntu-latest
     needs: build_sca
     timeout-minutes: 15
@@ -132,7 +136,7 @@ jobs:
             p/kubernetes
 
   deploy_staging:
-    name: '4. DEPLOY to STAGING'
+    name: "4. DEPLOY to STAGING"
     runs-on: ubuntu-latest
     needs: sast
     timeout-minutes: 15
@@ -161,7 +165,7 @@ jobs:
         run: curl --fail http://localhost:4173/
 
   test_dast:
-    name: '5. TEST & DAST'
+    name: "5. TEST & DAST"
     runs-on: ubuntu-latest
     needs: deploy_staging
     timeout-minutes: 20
@@ -196,7 +200,7 @@ jobs:
           path: reports/zap/
 
   hardening:
-    name: '6. HARDENING Final'
+    name: "6. HARDENING Final"
     runs-on: ubuntu-latest
     needs: test_dast
     timeout-minutes: 15
@@ -211,15 +215,42 @@ jobs:
           scan-type: config
           scan-ref: deploy/k8s
           severity: HIGH,CRITICAL
-          exit-code: '0'
+          exit-code: "0"
           format: table
 
       - name: Check deployment security controls
-        run: bash scripts/ci/check-k8s-hardening.sh
+    runs-on: ubuntu-latest
+    needs: hardening
+      url: https://github.com/${{ github.repository }}/actions
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build immutable release bundle
+        run: |
+          mkdir -p release
+            backend/Dockerfile \
+            frontend/Dockerfile \
+            deploy/k8s \
+            scripts/ci \
+            docs
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastticket-prod-bundle
+          path: release/
+          tar -czf release/fastticket-${{ github.sha }}.tgz \
+            .github/workflows/devsecops-ci.yml \
+            docker-compose.ci.yml \
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: production
 
   deploy_prod:
-    name: '7. DEPLOY to PROD (simulado)'
-    runs-on: ubuntu-latest
+    name: "7. DEPLOY to PROD (simulado)"
+ runs-on: ubuntu-latest
     needs: hardening
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     environment:
@@ -247,7 +278,4 @@ jobs:
         with:
           name: fastticket-prod-bundle
           path: release/
-
-      - name: Trivy frontend image scan
-        continue-on-error: true
 
