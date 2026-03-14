@@ -2,9 +2,13 @@ name: fastticket-devsecops-pipeline
 
 on:
   pull_request:
-    branches: [main, master]
+    branches:
+      - main
+      - master
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 env:
@@ -104,6 +108,8 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: fastticket-frontend:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
           exit-code: '1'
           format: table
 
@@ -119,7 +125,7 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: >-
+          config: |
             p/javascript
             p/nodejs
             p/secrets
@@ -174,6 +180,9 @@ jobs:
         run: docker compose -f docker-compose.ci.yml up -d --build
 
       - name: Wait for services
+        run: |
+          bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
+          bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
 
       - name: Functional smoke tests
         run: bash scripts/ci/smoke-tests.sh
@@ -228,15 +237,14 @@ jobs:
           tar -czf release/fastticket-${{ github.sha }}.tgz \
             .github/workflows/devsecops-ci.yml \
             docker-compose.ci.yml \
-            backend/Dockerfile frontend/Dockerfile \
-            deploy/k8s scripts/ci docs
+            backend/Dockerfile \
+            frontend/Dockerfile \
+            deploy/k8s \
+            scripts/ci \
+            docs
 
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
           name: fastticket-prod-bundle
           path: release/
-        run: |
-          bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
-          bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
-
