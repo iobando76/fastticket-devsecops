@@ -1,0 +1,243 @@
+name: fastticket-devsecops-pipeline
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/fastticket-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/fastticket-frontend
+  CI_BACKEND_URL: http://localhost:5000
+  CI_FRONTEND_URL: http://localhost:4173
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: write
+
+jobs:
+  code:
+    name: '1. CODE (Shift-Left)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: npm run test:ci
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test:ci
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+  build_sca:
+    name: '2. BUILD & SCA'
+    runs-on: ubuntu-latest
+    needs: code
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        run: docker build -t fastticket-backend:${{ github.sha }} -f backend/Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -t fastticket-frontend:${{ github.sha }} -f frontend/Dockerfile .
+
+      - name: Trivy filesystem scan (dependencies / SCA)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+          vuln-type: os,library
+
+      - name: Trivy backend image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: fastticket-backend:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Trivy frontend image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: fastticket-frontend:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+  sast:
+    name: '3. SAST'
+    runs-on: ubuntu-latest
+    needs: build_sca
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/javascript
+            p/nodejs
+            p/secrets
+            p/owasp-top-ten
+            p/dockerfile
+            p/kubernetes
+        
+  deploy_staging:
+    name: '4. DEPLOY to STAGING'
+    runs-on: ubuntu-latest
+    needs: sast
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create CI env files
+        run: |
+          cp backend/.env.example backend/.env
+          cp frontend/.env.example frontend/.env
+
+      - name: Launch staging stack with Docker Compose
+        run: docker compose -f docker-compose.ci.yml up -d --build
+
+      - name: Wait for API
+        run: bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
+
+      - name: Wait for frontend
+        run: bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
+
+      - name: Backend smoke test
+        run: curl --fail http://localhost:5000/
+
+      - name: Frontend smoke test
+        run: curl --fail http://localhost:4173/
+
+  test_dast:
+    name: '5. TEST & DAST'
+    runs-on: ubuntu-latest
+    needs: deploy_staging
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create CI env files
+        run: |
+          cp backend/.env.example backend/.env
+          cp frontend/.env.example frontend/.env
+
+      - name: Launch stack for tests
+        run: docker compose -f docker-compose.ci.yml up -d --build
+
+      - name: Wait for services
+        run: |
+          bash scripts/ci/wait-for-http.sh http://localhost:5000/ 60
+          bash scripts/ci/wait-for-http.sh http://localhost:4173/ 60
+
+      - name: Functional smoke tests
+        run: bash scripts/ci/smoke-tests.sh
+
+      - name: OWASP ZAP baseline
+        run: bash scripts/ci/run-zap-baseline.sh http://localhost:4173
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: reports/zap/
+
+  hardening:
+    name: '6. HARDENING Final'
+    runs-on: ubuntu-latest
+    needs: test_dast
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trivy config scan (IaC / K8s)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: deploy/k8s
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: table
+
+      - name: Check deployment security controls
+        run: bash scripts/ci/check-k8s-hardening.sh
+
+  deploy_prod:
+    name: '7. DEPLOY to PROD (simulado)'
+    runs-on: ubuntu-latest
+    needs: hardening
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: production
+      url: https://github.com/${{ github.repository }}/actions
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build immutable release bundle
+        run: |
+          mkdir -p release
+          tar -czf release/fastticket-${{ github.sha }}.tgz \
+            .github/workflows/devsecops-ci.yml \
+            docker-compose.ci.yml \
+            backend/Dockerfile frontend/Dockerfile \
+            deploy/k8s scripts/ci docs
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastticket-prod-bundle
+          path: release/

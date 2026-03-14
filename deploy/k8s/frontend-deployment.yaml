@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastticket-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastticket-frontend
+  template:
+    metadata:
+      labels:
+        app: fastticket-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/iobando76/fastticket-frontend:latest
+          ports:
+            - containerPort: 4173
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
