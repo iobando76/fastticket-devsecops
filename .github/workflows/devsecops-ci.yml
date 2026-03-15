@@ -200,7 +200,7 @@ jobs:
         run: bash scripts/ci/smoke-tests.sh
 
       - name: OWASP ZAP baseline
-        run: bash scripts/ci/run-zap-baseline.sh http://localhost:4173
+        run: bash scripts/ci/run-zap-baseline.sh
 
       - name: Upload ZAP report
         if: always()
