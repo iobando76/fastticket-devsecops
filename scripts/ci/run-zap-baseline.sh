@@ -2,13 +2,17 @@
 set -euo pipefail
 
 TARGET="${1:-http://localhost:4173}"
+WORKDIR="$(pwd)/zap-output"
 
-mkdir -p reports/zap
+mkdir -p "$WORKDIR"
 
 docker run --rm \
-  --network host \
-  -v "$(pwd)/reports/zap:/zap/wrk/:rw" \
-  ghcr.io/zaproxy/zaproxy:stable \
-  zap-baseline.py -t "$TARGET" -r zap-report.html -J zap-report.json -m 3
-
-echo "ZAP baseline completado"
+  --user root \
+  -v "$WORKDIR:/zap/wrk:rw" \
+  -t ghcr.io/zaproxy/zaproxy:stable \
+  zap-baseline.py \
+    -t "$TARGET" \
+    -r zap-report.html \
+    -J zap-report.json \
+    -w zap-report.md \
+    -m 3
